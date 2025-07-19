@@ -2,7 +2,7 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const {connect} = require('./db/connect'); 
-const ocrRoutes = require('./routes/ocrRoutes'); 
+const ocrRoutes = require('./routes/ocr.routes'); 
 
 dotenv.config();
 const app = express();
@@ -14,6 +14,10 @@ app.use(express.json());
 
 
 app.use('/api/ocr', ocrRoutes); 
+app.use('/api/transactions', transactionRoutes); 
+app.use('/api/categories', categoryRoutes); 
+app.use('/api/reports', reportRoutes); 
+
 
 app.get('/', (req, res) => {
     res.send('API is running...');
