@@ -4,7 +4,7 @@ const { recognizeText } = require('../utils/ocrHelper');
 const { parseReceiptWithGemini } = require('../utils/parser');
 const Transaction = require('../models/transaction.model');
 const Category = require('../models/category.model');
-const { errorHandler } = require('../utils/errorHandler');
+const { errorHandler } = require('../middleware/errorHandler.middleware');
 
 const uploadDir = path.join(__dirname, '../../uploads');
 if (!fs.existsSync(uploadDir)) {

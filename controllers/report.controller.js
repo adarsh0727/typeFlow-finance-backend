@@ -1,5 +1,5 @@
 const Transaction = require('../models/transaction.model');
-const { errorHandler } = require('../utils/errorHandler');
+const { errorHandler } = require('../middleware/errorHandler.middleware');
 const mongoose = require('mongoose');
 
 // expense by category for graphs
@@ -200,41 +200,70 @@ const getDashboardSummary = async (req, res) => {
     const userId = new mongoose.Types.ObjectId(req.user._id);
 
     const today = new Date();
+    // For current/previous month calculations
     const startOfCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const startOfPreviousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const endOfPreviousMonth = new Date(today.getFullYear(), today.getMonth(), 0);
 
-    // Total Balance (sum of all income - sum of all expenses)
-    const balancePipeline = [
-      { $match: { userId: userId } },
+    // For last 30 days calculations
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0); // Start of 30 days ago
+
+    
+    const overallAnd30DaysPipeline = [
+      { $match: { userId: userId } }, 
       {
-        $group: {
-          _id: null,
-          totalIncome: {
-            $sum: { $cond: { if: { $eq: ['$type', 'income'] }, then: '$amount', else: 0 } }
-          },
-          totalExpense: {
-            $sum: { $cond: { if: { $eq: ['$type', 'expense'] }, then: '$amount', else: 0 } }
-          }
-        }
-      },
-      {
-        $project: {
-          _id: 0,
-          totalBalance: { $subtract: ['$totalIncome', '$totalExpense'] }
+        $facet: { 
+          "overallBalance": [
+            {
+              $group: {
+                _id: null,
+                totalIncome: { $sum: { $cond: { if: { $eq: ['$type', 'income'] }, then: '$amount', else: 0 } } },
+                totalExpense: { $sum: { $cond: { if: { $eq: ['$type', 'expense'] }, then: '$amount', else: 0 } } }
+              }
+            },
+            {
+              $project: {
+                _id: 0,
+                totalBalance: { $subtract: ['$totalIncome', '$totalExpense'] }
+              }
+            }
+          ],
+          "last30DaysSummary": [
+            { $match: { date: { $gte: thirtyDaysAgo, $lte: today } } }, // Filter transactions only for the last 30 days
+            {
+              $group: {
+                _id: null,
+                income: { $sum: { $cond: { if: { $eq: ['$type', 'income'] }, then: '$amount', else: 0 } } },
+                expense: { $sum: { $cond: { if: { $eq: ['$type', 'expense'] }, then: '$amount', else: 0 } } },
+                totalTransactions: { $sum: 1 }
+              }
+            },
+            {
+              $project: {
+                _id: 0,
+                netIncome: { $subtract: ['$income', '$expense'] },
+                totalExpense: '$expense',
+                totalTransactions: '$totalTransactions'
+              }
+            }
+          ]
         }
       }
     ];
 
-    const balanceResult = await Transaction.aggregate(balancePipeline);
-    const totalBalance = balanceResult.length > 0 ? balanceResult[0].totalBalance : 0;
+    const [overallAnd30DaysResult] = await Transaction.aggregate(overallAnd30DaysPipeline);
 
-    // Monthly Income/Expenses for current month and previous month
+    const totalBalance = (overallAnd30DaysResult?.overallBalance?.[0]?.totalBalance) || 0;
+    const last30DaysSummary = (overallAnd30DaysResult?.last30DaysSummary?.[0]) || { netIncome: 0, totalExpense: 0, totalTransactions: 0 };
+
+
     const monthlyDataPipeline = [
       {
         $match: {
           userId: userId,
-          date: { $gte: startOfPreviousMonth, $lte: today } 
+          date: { $gte: startOfPreviousMonth, $lte: today }
         }
       },
       {
@@ -267,23 +296,32 @@ const getDashboardSummary = async (req, res) => {
       }
     });
 
-   // % changes
+    // % changes
     const incomeChange = previousMonthIncome > 0 ? ((currentMonthIncome - previousMonthIncome) / previousMonthIncome) * 100 : (currentMonthIncome > 0 ? 100 : 0);
     const expenseChange = previousMonthExpense > 0 ? ((currentMonthExpense - previousMonthExpense) / previousMonthExpense) * 100 : (currentMonthExpense > 0 ? 100 : 0);
 
     // savings rate
-    const savingsRate = (currentMonthIncome > 0) ? (((currentMonthIncome - currentMonthExpense) / currentMonthIncome) * 100) : 0;
+    const savingsRate = (currentMonthIncome > 0) ? (((currentMonthIncome - currentMonthExpense) / currentMonthIncome) / currentMonthIncome) * 100 : 0; // Fix: was missing a / currentMonthIncome
 
     res.status(200).json({
+      // Overall Balance
       totalBalance: totalBalance,
+
+      // Monthly Summary
       monthlyIncome: currentMonthIncome,
       monthlyExpenses: currentMonthExpense,
       incomeChange: parseFloat(incomeChange.toFixed(2)),
       expenseChange: parseFloat(expenseChange.toFixed(2)),
-      savingsRate: parseFloat(savingsRate.toFixed(2))
+      savingsRate: parseFloat(savingsRate.toFixed(2)),
+
+      // Last 30 Days Summary (New Addition)
+      netIncomeLast30Days: last30DaysSummary.netIncome,
+      totalExpenseLast30Days: last30DaysSummary.totalExpense,
+      totalTransactionsLast30Days: last30DaysSummary.totalTransactions,
     });
 
   } catch (error) {
+    console.error('Error fetching dashboard summary:', error);
     errorHandler(res, error, 500);
   }
 };
@@ -293,5 +331,5 @@ module.exports = {
   getExpensesByCategory,
   getMonthlySpending,
   getIncomeVsExpense,
-  getDashboardSummary 
+  getDashboardSummary
 };
