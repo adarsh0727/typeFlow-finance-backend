@@ -1,6 +1,6 @@
-const Transaction = require('../models/transaction.js');
-const Category = require('../models/category.js');
-const { errorHandler } = require('../utils/errorHandler'); 
+const Transaction = require('../models/transaction.model.js');
+const Category = require('../models/category.model.js');
+const { errorHandler } = require('../utils/errorHandler.js'); 
 
 
 const createTransaction = async (req, res) => {

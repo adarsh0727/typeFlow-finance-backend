@@ -2,8 +2,8 @@ const path = require('path');
 const fs = require('fs');
 const { recognizeText } = require('../utils/ocrHelper');
 const { parseReceiptWithGemini } = require('../utils/parser');
-const Transaction = require('../models/transaction');
-const Category = require('../models/category');
+const Transaction = require('../models/transaction.model');
+const Category = require('../models/category.model');
 const { errorHandler } = require('../utils/errorHandler');
 
 const uploadDir = path.join(__dirname, '../../uploads');
