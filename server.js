@@ -3,6 +3,9 @@ const express = require('express');
 const dotenv = require('dotenv');
 const {connect} = require('./db/connect'); 
 const ocrRoutes = require('./routes/ocr.routes'); 
+const transactionRoutes = require('./routes/transaction.routes')
+// const categoryRoutes = require('./routes/transaction.routes')
+const reportRoutes = require('./routes/report.routes')
 
 dotenv.config();
 const app = express();
@@ -15,7 +18,7 @@ app.use(express.json());
 
 app.use('/api/ocr', ocrRoutes); 
 app.use('/api/transactions', transactionRoutes); 
-app.use('/api/categories', categoryRoutes); 
+// app.use('/api/categories', categoryRoutes); 
 app.use('/api/reports', reportRoutes); 
 
 
