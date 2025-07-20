@@ -4,55 +4,45 @@ const mongoose = require('mongoose');
 
 // expense by category for graphs
 
-const getExpensesByCategory = async (req, res) => {
+const getExpensesByCategory = async (req, res, next) => {
   try {
     if (!req.user || !req.user._id) {
       return res.status(401).json({ message: 'Authentication required. User not found.' });
     }
-    const userId = new mongoose.Types.ObjectId(req.user._id);
 
+    
+    const userId = req.user._id.toString();
+console.log('User ID type:', typeof userId, userId); 
+    // console.log(userId);
     const { startDate, endDate } = req.query;
-    let dateFilter = {};
-    if (startDate) {
-      dateFilter.$gte = new Date(startDate);
-    }
-    if (endDate) {
-      dateFilter.$lte = new Date(endDate);
+    const dateFilter = {};
+    if (startDate) dateFilter.$gte = new Date(startDate);
+    if (endDate) dateFilter.$lte = new Date(endDate);
+
+    const matchStage = {
+      userId: userId, 
+      type: 'expense',
+    };
+
+    if (Object.keys(dateFilter).length > 0) {
+      matchStage.date = dateFilter;
     }
 
     const pipeline = [
-      {
-        $match: {
-          userId: userId,
-          type: 'expense',
-          ...(Object.keys(dateFilter).length > 0 && { date: dateFilter }) // date filter
-        }
-      },
-      {
-        $group: {
-          _id: '$category.name', // grp by catg. name 
-          totalAmount: { $sum: '$amount' } // amt sum for each catg.
-        }
-      },
-      {
-        $sort: { totalAmount: -1 } // desc order
-      },
-      {
-        $project: {
-          _id: 0, 
-          category: '$_id',  // renaming
-          amount: '$totalAmount' // renaming
-        }
-      }
+      { $match: matchStage },
+      { $group: { _id: '$category.name', totalAmount: { $sum: '$amount' } } },
+      { $sort: { totalAmount: -1 } },
+      { $project: { _id: 0, category: '$_id', amount: '$totalAmount' } }
     ];
 
     const expensesByCategory = await Transaction.aggregate(pipeline);
-
+    console.log('DEBUG: Aggregation result:', expensesByCategory);
     res.status(200).json(expensesByCategory);
   } catch (error) {
-    errorHandler(res, error, 500);
+    next(error);
   }
 };
+
 
 // for last 12 months, monthly spending amount.
 const getMonthlySpending = async (req, res) => {
@@ -60,21 +50,21 @@ const getMonthlySpending = async (req, res) => {
     if (!req.user || !req.user._id) {
       return res.status(401).json({ message: 'Authentication required. User not found.' });
     }
-    const userId = new mongoose.Types.ObjectId(req.user._id);
+
+    const userId = req.user._id.toString(); 
 
     const now = new Date();
 
-    // going back 1 full year and setting up time to start of the first day of that month
     const twelveMonthsAgo = new Date();
-    twelveMonthsAgo.setFullYear(now.getFullYear() - 1); 
-    twelveMonthsAgo.setDate(1); 
-    twelveMonthsAgo.setHours(0, 0, 0, 0); 
+    twelveMonthsAgo.setFullYear(now.getFullYear() - 1);
+    twelveMonthsAgo.setDate(1);
+    twelveMonthsAgo.setHours(0, 0, 0, 0);
 
     const pipeline = [
       {
         $match: {
-          userId: userId,
-          type: 'expense', 
+          userId: userId, 
+          type: 'expense',
           date: { $gte: twelveMonthsAgo, $lte: now }
         }
       },
@@ -88,14 +78,22 @@ const getMonthlySpending = async (req, res) => {
         }
       },
       {
-        $sort: { '_id.year': 1, '_id.month': 1 } 
+        $sort: { '_id.year': 1, '_id.month': 1 }
       },
       {
         $project: {
           _id: 0,
           monthYear: {
-            $dateToString: { format: '%Y-%m', date: { $dateFromParts: { year: '$_id.year', month: '$_id.month' } } }
-          }, // YYYY-MM
+            $dateToString: {
+              format: '%Y-%m',
+              date: {
+                $dateFromParts: {
+                  year: '$_id.year',
+                  month: '$_id.month'
+                }
+              }
+            }
+          },
           amount: '$totalAmount'
         }
       }
@@ -103,14 +101,13 @@ const getMonthlySpending = async (req, res) => {
 
     const monthlyData = await Transaction.aggregate(pipeline);
 
-    // result arr for 12 months
     const result = [];
     for (let i = 0; i < 12; i++) {
-        const d = new Date(twelveMonthsAgo);
-        d.setMonth(d.getMonth() + i);
-        const monthYear = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
-        const existingData = monthlyData.find(item => item.monthYear === monthYear);
-        result.push(existingData || { monthYear, amount: 0 });
+      const d = new Date(twelveMonthsAgo);
+      d.setMonth(d.getMonth() + i);
+      const monthYear = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+      const existingData = monthlyData.find(item => item.monthYear === monthYear);
+      result.push(existingData || { monthYear, amount: 0 });
     }
 
     res.status(200).json(result);
@@ -125,7 +122,8 @@ const getIncomeVsExpense = async (req, res) => {
     if (!req.user || !req.user._id) {
       return res.status(401).json({ message: 'Authentication required. User not found.' });
     }
-    const userId = new mongoose.Types.ObjectId(req.user._id);
+
+    const userId = req.user._id.toString(); 
 
     const now = new Date();
     const twelveMonthsAgo = new Date();
@@ -136,7 +134,7 @@ const getIncomeVsExpense = async (req, res) => {
     const pipeline = [
       {
         $match: {
-          userId: userId,
+          userId: userId, 
           date: { $gte: twelveMonthsAgo, $lte: now }
         }
       },
@@ -159,13 +157,21 @@ const getIncomeVsExpense = async (req, res) => {
         }
       },
       {
-        $sort: { '_id.year': 1, '_id.month': 1 } 
+        $sort: { '_id.year': 1, '_id.month': 1 }
       },
       {
         $project: {
           _id: 0,
           monthYear: {
-            $dateToString: { format: '%Y-%m', date: { $dateFromParts: { year: '$_id.year', month: '$_id.month' } } }
+            $dateToString: {
+              format: '%Y-%m',
+              date: {
+                $dateFromParts: {
+                  year: '$_id.year',
+                  month: '$_id.month'
+                }
+              }
+            }
           },
           income: '$totalIncome',
           expense: '$totalExpense'
@@ -175,14 +181,13 @@ const getIncomeVsExpense = async (req, res) => {
 
     const monthlyData = await Transaction.aggregate(pipeline);
 
-    // res arr
     const result = [];
     for (let i = 0; i < 12; i++) {
-        const d = new Date(twelveMonthsAgo);
-        d.setMonth(d.getMonth() + i);
-        const monthYear = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
-        const existingData = monthlyData.find(item => item.monthYear === monthYear);
-        result.push(existingData || { monthYear, income: 0, expense: 0 });
+      const d = new Date(twelveMonthsAgo);
+      d.setMonth(d.getMonth() + i);
+      const monthYear = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+      const existingData = monthlyData.find(item => item.monthYear === monthYear);
+      result.push(existingData || { monthYear, income: 0, expense: 0 });
     }
 
     res.status(200).json(result);
@@ -197,7 +202,8 @@ const getDashboardSummary = async (req, res) => {
     if (!req.user || !req.user._id) {
       return res.status(401).json({ message: 'Authentication required. User not found.' });
     }
-    const userId = new mongoose.Types.ObjectId(req.user._id);
+    const userId = req.user._id.toString(); 
+
 
     const today = new Date();
     // For current/previous month calculations
@@ -301,7 +307,7 @@ const getDashboardSummary = async (req, res) => {
     const expenseChange = previousMonthExpense > 0 ? ((currentMonthExpense - previousMonthExpense) / previousMonthExpense) * 100 : (currentMonthExpense > 0 ? 100 : 0);
 
     // savings rate
-    const savingsRate = (currentMonthIncome > 0) ? (((currentMonthIncome - currentMonthExpense) / currentMonthIncome) / currentMonthIncome) * 100 : 0; // Fix: was missing a / currentMonthIncome
+    const savingsRate = (currentMonthIncome > 0) ? (((currentMonthIncome - currentMonthExpense) / currentMonthIncome) / currentMonthIncome) * 100 : 0; 
 
     res.status(200).json({
       // Overall Balance

@@ -1,11 +1,12 @@
-const errorHandler = (res, error, statusCode = 500) => {
-    console.error("API Error:", error.message, error.stack);
+const errorHandler = (err, req, res, next) => {
+  console.error(err.stack);
 
-    const code = error.statusCode || statusCode;
+  const statusCode = err.statusCode || 500;
 
-    res.status(code).json({
-        message: error.message || 'An unexpected error occurred',
-    });
+  res.status(statusCode).json({
+    message: err.message || 'An unexpected error occurred.',
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+  });
 };
 
 module.exports = { errorHandler };
