@@ -35,6 +35,8 @@ backend/
 ├── README.md           # Project documentation
 └── server.js           # Application entry point
 ```
+## API Flow
+https://github.com/user-attachments/assets/8932052f-fd38-4a59-b200-01615135fd73
 
 ## 🚀 Features
 
